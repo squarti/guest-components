@@ -19,7 +19,6 @@ pub fn unpack<R: io::Read>(input: R, destination: &Path) -> Result<()> {
     let mut archive = Archive::new(input);
     archive.set_preserve_ownerships(true);
     archive.set_preserve_permissions(true);
-    archive.set_unpack_xattrs(true);
     info!("unpack call ssq");
 
     if destination.exists() {
