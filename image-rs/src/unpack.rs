@@ -11,8 +11,8 @@ use std::ffi::CString;
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::convert::TryInto;
 use tar::Archive;
+use std::convert::TryInto;
 use tar::Header;
 
 /// Unpack the contents of tarball to the destination path
@@ -93,20 +93,20 @@ pub fn unpack<R: io::Read>(input: R, destination: &Path) -> Result<()> {
 fn handle_whiteout(path: &Path, header: &Header, destination: &Path) -> Result<bool> {
     // Handle whiteout conversion
     let name = path.file_name().unwrap();
+    let parent = path.parent().unwrap();
     let name = name.to_str().unwrap();
     if name == ".wh..wh..opq" {
-        //TODO set_xattr
+        xattr::set(parent, "trusted.overlay.opaque", b"y")?;
         return Ok(false)
     }
 
     if name.starts_with(".wh.") {
         let original_name = name.strip_prefix(".wh.").unwrap();
-        let dir = path.parent().unwrap();
-        let original_dir = dir.join(original_name);
+        let original_path = parent.join(original_name);
         let path = CString::new(format!(
             "{}/{}",
             destination.display(),
-            original_dir.display()
+            original_path.display()
         ))?;
     
         let ret = unsafe { libc::mknod(path.as_ptr(), libc::S_IFCHR, 0) };
@@ -194,4 +194,5 @@ mod tests {
         assert!(unpack(data.as_slice(), destination).is_ok());
     }
 }
+
 
