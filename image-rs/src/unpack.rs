@@ -52,14 +52,28 @@ pub fn unpack<R: io::Read>(input: R, destination: &Path) -> Result<()> {
                 destination.display(),
                 original_dir.display()
             ))?;
-            unsafe { libc::mknod(path.as_ptr(), libc::S_IFCHR, 0) };
+            let ret = unsafe { libc::mknod(path.as_ptr(), libc::S_IFCHR, 0) };
+            if ret != 0 {
+                bail!(
+                    "mknod: {:?} error: {:?}",
+                    path,
+                    io::Error::last_os_error()
+                );
+            }
             let uid: libc::uid_t = file.header().uid()?.try_into().map_err(|_| {
                 io::Error::new(io::ErrorKind::Other, format!("UID is too large!"))
             })?;
             let gid: libc::gid_t = file.header().gid()?.try_into().map_err(|_| {
                 io::Error::new(io::ErrorKind::Other, format!("GID is too large!"))
             })?;
-            unsafe { libc::lchown(path.as_ptr(), uid, gid) };
+            let ret = unsafe { libc::lchown(path.as_ptr(), uid, gid) };
+            if ret != 0 {
+                bail!(
+                    "change ownership: {:?} error: {:?}",
+                    path,
+                    io::Error::last_os_error()
+                );
+            }
             continue;
         }
 
