@@ -11,6 +11,7 @@ use std::ffi::CString;
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::convert::TryInto;
 use tar::Archive;
 
 /// Unpack the contents of tarball to the destination path
@@ -33,6 +34,35 @@ pub fn unpack<R: io::Read>(input: R, destination: &Path) -> Result<()> {
     let mut dirs: HashMap<CString, [timeval; 2]> = HashMap::default();
     for file in archive.entries()? {
         let mut file = file?;
+
+        // Handle whiteout conversion
+        let path = file.path()?;
+        let name = path.file_name().unwrap();
+        let name = name.to_str().unwrap();
+        if name == ".wh..wh..opq" {
+            //TODO set_xattr
+            continue;
+        }
+        if name.starts_with(".wh.") {
+            let original_name = name.strip_prefix(".wh.").unwrap();
+            let dir = path.parent().unwrap();
+            let original_dir = dir.join(original_name);
+            let path = CString::new(format!(
+                "{}/{}",
+                destination.display(),
+                original_dir.display()
+            ))?;
+            unsafe { libc::mknod(path.as_ptr(), libc::S_IFCHR, 0) };
+            let uid: libc::uid_t = file.header().uid()?.try_into().map_err(|_| {
+                io::Error::new(io::ErrorKind::Other, format!("UID is too large!"))
+            })?;
+            let gid: libc::gid_t = file.header().gid()?.try_into().map_err(|_| {
+                io::Error::new(io::ErrorKind::Other, format!("GID is too large!"))
+            })?;
+            unsafe { libc::lchown(path.as_ptr(), uid, gid) };
+            continue;
+        }
+
         file.unpack_in(destination)?;
 
         // tar-rs crate only preserve timestamps of files,
