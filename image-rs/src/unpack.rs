@@ -192,5 +192,3 @@ mod tests {
         assert!(unpack(data.as_slice(), destination).is_ok());
     }
 }
-
-
