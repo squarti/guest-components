@@ -13,6 +13,7 @@ use std::io;
 use std::path::Path;
 use std::convert::TryInto;
 use tar::Archive;
+use tar::Header;
 
 /// Unpack the contents of tarball to the destination path
 pub fn unpack<R: io::Read>(input: R, destination: &Path) -> Result<()> {
@@ -35,46 +36,8 @@ pub fn unpack<R: io::Read>(input: R, destination: &Path) -> Result<()> {
     for file in archive.entries()? {
         let mut file = file?;
 
-        // Handle whiteout conversion
-        let path = file.path()?;
-        let name = path.file_name().unwrap();
-        let name = name.to_str().unwrap();
-        if name == ".wh..wh..opq" {
-            //TODO set_xattr
-            continue;
-        }
-        if name.starts_with(".wh.") {
-            let original_name = name.strip_prefix(".wh.").unwrap();
-            let dir = path.parent().unwrap();
-            let original_dir = dir.join(original_name);
-            let path = CString::new(format!(
-                "{}/{}",
-                destination.display(),
-                original_dir.display()
-            ))?;
-            let ret = unsafe { libc::mknod(path.as_ptr(), libc::S_IFCHR, 0) };
-            if ret != 0 {
-                bail!(
-                    "mknod: {:?} error: {:?}",
-                    path,
-                    io::Error::last_os_error()
-                );
-            }
-            let uid: libc::uid_t = file.header().uid()?.try_into().map_err(|_| {
-                io::Error::new(io::ErrorKind::Other, format!("UID is too large!"))
-            })?;
-            let gid: libc::gid_t = file.header().gid()?.try_into().map_err(|_| {
-                io::Error::new(io::ErrorKind::Other, format!("GID is too large!"))
-            })?;
-            let ret = unsafe { libc::lchown(path.as_ptr(), uid, gid) };
-            if ret != 0 {
-                bail!(
-                    "change ownership: {:?} error: {:?}",
-                    path,
-                    io::Error::last_os_error()
-                );
-            }
-            continue;
+        if ! handle_whiteout(&file.path().unwrap(), file.header(), destination)? {
+            continue
         }
 
         file.unpack_in(destination)?;
@@ -125,6 +88,54 @@ pub fn unpack<R: io::Read>(input: R, destination: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn handle_whiteout(path: &Path, header: &Header, destination: &Path) -> Result<bool> {
+    // Handle whiteout conversion
+    let name = path.file_name().unwrap();
+    let name = name.to_str().unwrap();
+    if name == ".wh..wh..opq" {
+        //TODO set_xattr
+        return Ok(false)
+    }
+
+    if name.starts_with(".wh.") {
+        let original_name = name.strip_prefix(".wh.").unwrap();
+        let dir = path.parent().unwrap();
+        let original_dir = dir.join(original_name);
+        let path = CString::new(format!(
+            "{}/{}",
+            destination.display(),
+            original_dir.display()
+        ))?;
+    
+        let ret = unsafe { libc::mknod(path.as_ptr(), libc::S_IFCHR, 0) };
+        if ret != 0 { 
+            bail!(
+                "mknod: {:?} error: {:?}",
+                path,
+                io::Error::last_os_error()
+            );  
+        }
+
+        let uid: libc::uid_t = header.uid()?.try_into().map_err(|_| {
+            io::Error::new(io::ErrorKind::Other, format!("UID is too large!"))
+        })?;
+        let gid: libc::gid_t = header.gid()?.try_into().map_err(|_| {
+            io::Error::new(io::ErrorKind::Other, format!("GID is too large!"))
+        })?;
+        let ret = unsafe { libc::lchown(path.as_ptr(), uid, gid) };
+        if ret != 0 { 
+            bail!(
+                "change ownership: {:?} error: {:?}",
+                path,
+                io::Error::last_os_error()
+            );  
+        }
+        return Ok(false)
+    }
+
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -181,3 +192,4 @@ mod tests {
         assert!(unpack(data.as_slice(), destination).is_ok());
     }
 }
+
