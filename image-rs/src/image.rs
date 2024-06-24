@@ -15,6 +15,8 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
+use log::info;
+
 use crate::bundle::{create_runtime_config, BUNDLE_ROOTFS};
 use crate::config::{ImageConfig, CONFIGURATION_FILE_PATH};
 use crate::decoder::Compression;
@@ -184,6 +186,7 @@ impl ImageClient {
         auth_info: &Option<&str>,
         decrypt_config: &Option<&str>,
     ) -> Result<String> {
+        info!("ssq 1");
         let reference = Reference::try_from(image_url)?;
 
         // Try to get auth using input param.
@@ -197,6 +200,7 @@ impl ImageClient {
         } else {
             None
         };
+        info!("ssq 2");
 
         // If one of self.config.auth and self.config.security_validate is enabled,
         // there will establish a secure channel between image-rs and Attestation-Agent
@@ -224,6 +228,7 @@ impl ImageClient {
                 bail!("Secure channel creation needs aa_kbc_params.");
             }
         };
+        info!("ssq 3");
 
         // If no valid auth is given and config.auth is enabled, try to load
         // auth from `auth.json` of given place.
@@ -250,6 +255,7 @@ impl ImageClient {
             (false, true) => RegistryAuth::Anonymous,
             _ => auth.expect("unexpected uninitialized auth"),
         };
+        info!("ssq 4");
 
         let mut client = PullClient::new(
             reference,
@@ -270,6 +276,7 @@ impl ImageClient {
                 );
             }
         };
+        info!("ssq 5");
 
         #[cfg(feature = "nydus")]
         if utils::is_nydus_image(&image_manifest) {
@@ -315,6 +322,7 @@ impl ImageClient {
         {
             let m = self.meta_store.lock().await;
             if let Some(image_data) = &m.image_db.get(&id) {
+                info!("ssq 6");
                 return create_bundle(image_data, bundle_dir, snapshot);
             }
         }
@@ -331,6 +339,7 @@ impl ImageClient {
             .map_err(|e| anyhow!("Security validate failed: {:?}", e))?;
         }
 
+        info!("ssq 7");
         let (mut image_data, unique_layers, unique_diff_ids) = create_image_meta(
             &id,
             image_url,
@@ -339,6 +348,8 @@ impl ImageClient {
             &image_config,
         )?;
 
+
+        info!("ssq 8");
         let unique_layers_len = unique_layers.len();
         let layer_metas = client
             .async_pull_layers(
@@ -364,6 +375,7 @@ impl ImageClient {
             );
         }
 
+        info!("ssq 10");
         let image_id = create_bundle(&image_data, bundle_dir, snapshot)?;
 
         self.meta_store
