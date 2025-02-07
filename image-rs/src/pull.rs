@@ -8,10 +8,12 @@ use oci_client::manifest::{OciDescriptor, OciImageManifest};
 use oci_client::{secrets::RegistryAuth, Client, Reference};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_util::io::StreamReader;
 
+use std::fs;
 use crate::decoder::Compression;
 use crate::decrypt::Decryptor;
 use crate::image::LayerMeta;
@@ -35,6 +37,9 @@ pub struct PullClient<'a> {
 
     /// Max number of concurrent downloads.
     pub max_concurrent_download: usize,
+
+    /// Next layer index
+    pub layers_index: AtomicUsize,
 }
 
 impl<'a> PullClient<'a> {
@@ -48,12 +53,27 @@ impl<'a> PullClient<'a> {
     ) -> Result<PullClient<'a>> {
         let client = Client::default();
 
+        let mut next = 0;
+        if data_dir.exists() {
+            let paths = fs::read_dir(data_dir).unwrap();
+            for path in paths {
+                let p = path.unwrap().path();
+                let name = p.file_name().unwrap().to_str().unwrap();
+                let n = name.parse::<usize>().unwrap_or(0);
+                if n >= next {
+                    next = n + 1;
+                }
+            }
+        }
+        let layers_index = AtomicUsize::new(next);
+
         Ok(PullClient {
             client,
             auth,
             reference,
             data_dir: data_dir.to_path_buf(),
             max_concurrent_download,
+            layers_index,
         })
     }
 
@@ -132,8 +152,8 @@ impl<'a> PullClient<'a> {
             return Ok(layer_meta.clone());
         }
 
-        let blob_id = layer.digest.to_string().replace(':', "_");
-        let destination = self.data_dir.join(blob_id);
+        let index = self.layers_index.fetch_add(1, Ordering::Relaxed);
+        let destination = self.data_dir.join(index.to_string());
         let mut layer_meta = LayerMeta {
             compressed_digest: layer.digest.clone(),
             store_path: destination.display().to_string(),
