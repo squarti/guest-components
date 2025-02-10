@@ -9,6 +9,7 @@ use oci_client::manifest::{OciDescriptor, OciImageManifest};
 use oci_client::{secrets::RegistryAuth, Client, Reference};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_util::io::StreamReader;
@@ -18,6 +19,7 @@ use crate::decrypt::Decryptor;
 use crate::image::LayerMeta;
 use crate::meta_store::MetaStore;
 use crate::stream::stream_processing;
+use std::fs;
 
 /// The PullClient connects to remote OCI registry, pulls the container image,
 /// and save the image layers under data_dir and return the layer meta info.
@@ -36,6 +38,9 @@ pub struct PullClient<'a> {
 
     /// Max number of concurrent downloads.
     pub max_concurrent_download: usize,
+
+    /// Next layer index
+    pub layers_index: AtomicUsize,
 }
 
 impl<'a> PullClient<'a> {
@@ -69,12 +74,31 @@ impl<'a> PullClient<'a> {
         client_config.extra_root_certificates.extend(certs);
         let client = Client::try_from(client_config)?;
 
+        let mut next = 0;
+        if data_dir.exists() {
+            let paths = fs::read_dir(data_dir)?;
+            for path in paths {
+                let entry_path = path?.path();
+                let name = entry_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_str()
+                    .ok_or(anyhow!("Invalid unicode in path: {:?}", entry_path))?;
+                let n = name.parse::<usize>().unwrap_or(0);
+                if n >= next {
+                    next = n + 1;
+                }
+            }
+        }
+        let layers_index = AtomicUsize::new(next);
+
         Ok(PullClient {
             client,
             auth,
             reference,
             data_dir: data_dir.to_path_buf(),
             max_concurrent_download,
+            layers_index,
         })
     }
 
@@ -153,8 +177,8 @@ impl<'a> PullClient<'a> {
             return Ok(layer_meta.clone());
         }
 
-        let blob_id = layer.digest.to_string().replace(':', "_");
-        let destination = self.data_dir.join(blob_id);
+        let index = self.layers_index.fetch_add(1, Ordering::Relaxed);
+        let destination = self.data_dir.join(index.to_string());
         let mut layer_meta = LayerMeta {
             compressed_digest: layer.digest.clone(),
             store_path: destination.display().to_string(),
