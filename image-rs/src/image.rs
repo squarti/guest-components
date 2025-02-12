@@ -10,7 +10,9 @@ use oci_client::Reference;
 use oci_spec::image::{ImageConfiguration, Os};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -21,6 +23,7 @@ use crate::config::{ImageConfig, CONFIGURATION_FILE_NAME, DEFAULT_WORK_DIR};
 use crate::decoder::Compression;
 use crate::meta_store::{MetaStore, METAFILE};
 use crate::pull::PullClient;
+use crate::pull::PullLayersConfig;
 use crate::signature::SignatureValidator;
 use crate::snapshots::{SnapshotType, Snapshotter};
 
@@ -93,23 +96,16 @@ pub struct ImageClient {
 
     /// The config
     pub(crate) config: ImageConfig,
+
+    /// Next layer index
+    pub(crate) layers_index: AtomicUsize,
 }
 
 impl Default for ImageClient {
     // construct a default instance of `ImageClient`
     fn default() -> ImageClient {
         let work_dir = Path::new(DEFAULT_WORK_DIR);
-        let config = ImageConfig::try_from(work_dir.join(CONFIGURATION_FILE_NAME).as_path())
-            .unwrap_or_default();
-        let meta_store = MetaStore::try_from(work_dir.join(METAFILE).as_path()).unwrap_or_default();
-        let snapshots = Self::init_snapshots(&config.work_dir, &meta_store);
-        ImageClient {
-            registry_auth: None,
-            meta_store: Arc::new(RwLock::new(meta_store)),
-            snapshots,
-            signature_validator: None,
-            config,
-        }
+        ImageClient::new(work_dir.to_path_buf())
     }
 }
 
@@ -148,6 +144,23 @@ impl ImageClient {
         snapshots
     }
 
+    pub fn get_layer_index(data_dir: &Path) -> AtomicUsize {
+        let mut next = 0;
+        if data_dir.exists() {
+            if let Ok(paths) = fs::read_dir(data_dir) {
+                for entry_path in paths.filter_map(|result| result.ok()) {
+                    if let Some(name) = entry_path.file_name().to_str() {
+                        let n = name.parse::<usize>().unwrap_or(0);
+                        if n >= next {
+                            next = n + 1;
+                        }
+                    }
+                }
+            }
+        }
+        AtomicUsize::new(next)
+    }
+
     /// Create an ImageClient instance with specific work directory.
     pub fn new(work_dir: PathBuf) -> Self {
         let config = ImageConfig::try_from(work_dir.join(CONFIGURATION_FILE_NAME).as_path())
@@ -161,6 +174,7 @@ impl ImageClient {
             registry_auth: None,
             signature_validator: None,
             config,
+            layers_index: Self::get_layer_index(&work_dir.join("layers")),
         }
     }
 
@@ -205,9 +219,12 @@ impl ImageClient {
             },
         };
 
+        let layers_config =
+            PullLayersConfig::new(self.config.work_dir.join("layers"), &self.layers_index);
+
         let mut client = PullClient::new(
             reference,
-            &self.config.work_dir.join("layers"),
+            &layers_config,
             &auth,
             self.config.max_concurrent_layer_downloads_per_image,
             self.config.skip_proxy_ips.as_deref(),

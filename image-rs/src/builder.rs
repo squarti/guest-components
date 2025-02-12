@@ -127,12 +127,15 @@ impl ClientBuilder {
 
         let meta_store = Arc::new(RwLock::new(meta_store));
 
+        let layers_index = ImageClient::get_layer_index(&self.config.work_dir.join("layers"));
+
         Ok(ImageClient {
             registry_auth,
             signature_validator,
             meta_store,
             snapshots,
             config: self.config,
+            layers_index,
         })
     }
 }

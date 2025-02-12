@@ -19,7 +19,22 @@ use crate::decrypt::Decryptor;
 use crate::image::LayerMeta;
 use crate::meta_store::MetaStore;
 use crate::stream::stream_processing;
-use std::fs;
+
+// The PullLayersConfig specifies the data dir and next layer index for the image layers storage
+pub struct PullLayersConfig<'a> {
+    pub data_dir: PathBuf,
+    pub layers_index: &'a AtomicUsize,
+}
+
+impl<'a> PullLayersConfig<'a> {
+    /// Construct an instance of `ImageConfig` with specific work directory.
+    pub fn new(data_dir: PathBuf, layers_index: &'a AtomicUsize) -> Self {
+        Self {
+            data_dir: data_dir,
+            layers_index: layers_index,
+        }
+    }
+}
 
 /// The PullClient connects to remote OCI registry, pulls the container image,
 /// and save the image layers under data_dir and return the layer meta info.
@@ -40,7 +55,7 @@ pub struct PullClient<'a> {
     pub max_concurrent_download: usize,
 
     /// Next layer index
-    pub layers_index: AtomicUsize,
+    pub layers_index: &'a AtomicUsize,
 }
 
 impl<'a> PullClient<'a> {
@@ -48,7 +63,7 @@ impl<'a> PullClient<'a> {
     /// data store dir and optional remote registry auth info.
     pub fn new(
         reference: Reference,
-        data_dir: &Path,
+        layers_config: &'a PullLayersConfig,
         auth: &'a RegistryAuth,
         max_concurrent_download: usize,
         no_proxy: Option<&str>,
@@ -74,31 +89,13 @@ impl<'a> PullClient<'a> {
         client_config.extra_root_certificates.extend(certs);
         let client = Client::try_from(client_config)?;
 
-        let mut next = 0;
-        if data_dir.exists() {
-            let paths = fs::read_dir(data_dir)?;
-            for path in paths {
-                let entry_path = path?.path();
-                let name = entry_path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_str()
-                    .ok_or(anyhow!("Invalid unicode in path: {:?}", entry_path))?;
-                let n = name.parse::<usize>().unwrap_or(0);
-                if n >= next {
-                    next = n + 1;
-                }
-            }
-        }
-        let layers_index = AtomicUsize::new(next);
-
         Ok(PullClient {
             client,
             auth,
             reference,
-            data_dir: data_dir.to_path_buf(),
+            data_dir: layers_config.data_dir.clone(),
             max_concurrent_download,
-            layers_index,
+            layers_index: layers_config.layers_index,
         })
     }
 
@@ -273,9 +270,11 @@ mod tests {
             "nginx@sha256:9700d098d545f9d2ee0660dfb155fe64f4447720a0a763a93f2cf08997227279";
         let tempdir = tempfile::tempdir().unwrap();
         let image = Reference::try_from(image_url.to_string()).expect("create reference failed");
+        let layers_index = AtomicUsize::new(0);
+        let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
         let mut client = PullClient::new(
             image,
-            tempdir.path(),
+            &layers_config,
             &RegistryAuth::Anonymous,
             DEFAULT_MAX_CONCURRENT_DOWNLOAD,
             None,
@@ -324,9 +323,11 @@ mod tests {
             let tempdir = tempfile::tempdir().unwrap();
             let image =
                 Reference::try_from(image_url.to_string()).expect("create reference failed");
+            let layers_index = AtomicUsize::new(0);
+            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
             let mut client = PullClient::new(
                 image,
-                tempdir.path(),
+                &layers_config,
                 &RegistryAuth::Anonymous,
                 DEFAULT_MAX_CONCURRENT_DOWNLOAD,
                 None,
@@ -363,9 +364,11 @@ mod tests {
             let tempdir = tempfile::tempdir().unwrap();
             let image =
                 Reference::try_from(image_url.to_string()).expect("create reference failed");
+            let layers_index = AtomicUsize::new(0);
+            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
             let mut client = PullClient::new(
                 image,
-                tempdir.path(),
+                &layers_config,
                 &RegistryAuth::Anonymous,
                 DEFAULT_MAX_CONCURRENT_DOWNLOAD,
                 None,
@@ -431,9 +434,11 @@ mod tests {
         };
 
         let tempdir = tempfile::tempdir().unwrap();
+        let layers_index = AtomicUsize::new(0);
+        let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
         let mut client = PullClient::new(
             oci_image,
-            tempdir.path(),
+            &layers_config,
             &RegistryAuth::Anonymous,
             DEFAULT_MAX_CONCURRENT_DOWNLOAD,
             None,
@@ -523,9 +528,11 @@ mod tests {
         for image_url in nydus_images.iter() {
             let tempdir = tempfile::tempdir().unwrap();
             let image = Reference::try_from(*image_url).expect("create reference failed");
+            let layers_index = AtomicUsize::new(0);
+            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
             let mut client = PullClient::new(
                 image,
-                tempdir.path(),
+                &layers_config,
                 &RegistryAuth::Anonymous,
                 DEFAULT_MAX_CONCURRENT_DOWNLOAD,
                 None,
