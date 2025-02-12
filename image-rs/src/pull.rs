@@ -23,15 +23,15 @@ use crate::stream::stream_processing;
 // The PullLayersConfig specifies the data dir and next layer index for the image layers storage
 pub struct PullLayersConfig<'a> {
     pub data_dir: PathBuf,
-    pub layers_index: &'a AtomicUsize,
+    pub layers_index: Arc<AtomicUsize>,
 }
 
 impl<'a> PullLayersConfig<'a> {
     /// Construct an instance of `ImageConfig` with specific work directory.
-    pub fn new(data_dir: PathBuf, layers_index: &'a AtomicUsize) -> Self {
+    pub fn new(data_dir: PathBuf, layers_index: Arc<AtomicUsize>) -> Self {
         Self {
-            data_dir: data_dir,
-            layers_index: layers_index,
+            data_dir,
+            layers_index,
         }
     }
 }
@@ -55,7 +55,7 @@ pub struct PullClient<'a> {
     pub max_concurrent_download: usize,
 
     /// Next layer index
-    pub layers_index: &'a AtomicUsize,
+    pub layers_index: Arc<AtomicUsize>,
 }
 
 impl<'a> PullClient<'a> {

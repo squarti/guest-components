@@ -98,7 +98,7 @@ pub struct ImageClient {
     pub(crate) config: ImageConfig,
 
     /// Next layer index
-    pub(crate) layers_index: AtomicUsize,
+    pub(crate) layers_index: Arc<AtomicUsize>,
 }
 
 impl Default for ImageClient {
@@ -174,7 +174,7 @@ impl ImageClient {
             registry_auth: None,
             signature_validator: None,
             config,
-            layers_index: Self::get_layer_index(&work_dir.join("layers")),
+            layers_index: Arc::new(Self::get_layer_index(&work_dir.join("layers"))),
         }
     }
 
@@ -220,7 +220,7 @@ impl ImageClient {
         };
 
         let layers_config =
-            PullLayersConfig::new(self.config.work_dir.join("layers"), &self.layers_index);
+            PullLayersConfig::new(self.config.work_dir.join("layers"), self.layers_index.clone());
 
         let mut client = PullClient::new(
             reference,
