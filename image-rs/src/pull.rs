@@ -21,12 +21,12 @@ use crate::meta_store::MetaStore;
 use crate::stream::stream_processing;
 
 // The PullLayersConfig specifies the data dir and next layer index for the image layers storage
-pub struct PullLayersConfig<'a> {
+pub struct PullLayersConfig {
     pub data_dir: PathBuf,
     pub layers_index: Arc<AtomicUsize>,
 }
 
-impl<'a> PullLayersConfig<'a> {
+impl PullLayersConfig {
     /// Construct an instance of `ImageConfig` with specific work directory.
     pub fn new(data_dir: PathBuf, layers_index: Arc<AtomicUsize>) -> Self {
         Self {
@@ -95,7 +95,7 @@ impl<'a> PullClient<'a> {
             reference,
             data_dir: layers_config.data_dir.clone(),
             max_concurrent_download,
-            layers_index: layers_config.layers_index,
+            layers_index: layers_config.layers_index.clone(),
         })
     }
 
