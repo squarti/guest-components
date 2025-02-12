@@ -270,8 +270,8 @@ mod tests {
             "nginx@sha256:9700d098d545f9d2ee0660dfb155fe64f4447720a0a763a93f2cf08997227279";
         let tempdir = tempfile::tempdir().unwrap();
         let image = Reference::try_from(image_url.to_string()).expect("create reference failed");
-        let layers_index = AtomicUsize::new(0);
-        let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
+        let layers_index = Arc::new(AtomicUsize::new(0));
+        let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), layers_index);
         let mut client = PullClient::new(
             image,
             &layers_config,
@@ -323,8 +323,8 @@ mod tests {
             let tempdir = tempfile::tempdir().unwrap();
             let image =
                 Reference::try_from(image_url.to_string()).expect("create reference failed");
-            let layers_index = AtomicUsize::new(0);
-            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
+            let layers_index = Arc::new(AtomicUsize::new(0));
+            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), layers_index);
             let mut client = PullClient::new(
                 image,
                 &layers_config,
@@ -364,8 +364,8 @@ mod tests {
             let tempdir = tempfile::tempdir().unwrap();
             let image =
                 Reference::try_from(image_url.to_string()).expect("create reference failed");
-            let layers_index = AtomicUsize::new(0);
-            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
+            let layers_index = Arc::new(AtomicUsize::new(0));
+            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), layers_index);
             let mut client = PullClient::new(
                 image,
                 &layers_config,
@@ -434,8 +434,8 @@ mod tests {
         };
 
         let tempdir = tempfile::tempdir().unwrap();
-        let layers_index = AtomicUsize::new(0);
-        let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
+        let layers_index = Arc::new(AtomicUsize::new(0));
+        let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), layers_index);
         let mut client = PullClient::new(
             oci_image,
             &layers_config,
@@ -528,8 +528,8 @@ mod tests {
         for image_url in nydus_images.iter() {
             let tempdir = tempfile::tempdir().unwrap();
             let image = Reference::try_from(*image_url).expect("create reference failed");
-            let layers_index = AtomicUsize::new(0);
-            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), &layers_index);
+            let layers_index = Arc::new(AtomicUsize::new(0));
+            let layers_config = PullLayersConfig::new(tempdir.path().to_path_buf(), layers_index);
             let mut client = PullClient::new(
                 image,
                 &layers_config,
